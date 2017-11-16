@@ -2,7 +2,7 @@ const scrapeIt = require('scrape-it')
 const request = require('request-promise');
 const cheerio = require('cheerio');
 
-const getProxies = scrapeIt("https://free-proxy-list.net/anonymous-proxy.html", {
+const freeProxyListScrapeConfig = {
   proxies: {
     listItem: "#proxylisttable tbody tr",
     data: {
@@ -21,11 +21,9 @@ const getProxies = scrapeIt("https://free-proxy-list.net/anonymous-proxy.html", 
       }
     }
   }
-}).then(({proxies}) => proxies);
+};
 
-// $ = cheerio.load();
-// const getProductionBulletinPage =
-scrapeIt("https://productionbulletin.com/database/", {
+const productionBulletinScrapeConfig = {
   productions: {
     listItem: "#projectlist tbody tr",
     data: {
@@ -61,4 +59,30 @@ scrapeIt("https://productionbulletin.com/database/", {
       }
     }
   },
-}).then(page => console.log(page));
+};
+
+const scrapeProxies = () => scrapeIt("https://free-proxy-list.net/anonymous-proxy.html", freeProxyListScrapeConfig)
+  .then(({proxies}) => proxies.filter(proxy => proxy.isElite));
+
+const parseProductions = ($) => scrapeIt.scrapeHTML($, productionBulletinScrapeConfig);
+
+const fetchProductionPage = (proxy, pageNumber = 1) => request({
+  uri: "https://productionbulletin.com/database/",
+  options: {
+    proxy,
+    transform: body => cheerio.load(body),
+  },
+})
+  .then($ => parseProductions($))
+  .then(({productions}) => productions);
+
+const getRandomArbitrary = (min, max) => Math.round(Math.random() * (max - min) + min);
+
+const getRandomArrayKey = (array) => getRandomArbitrary(0, array.length - 1);
+
+scrapeProxies()
+  .then(proxies => { console.log('Scraped proxies: ' + proxies.length); return proxies })
+  .then(proxies => { const randomProxy = proxies[getRandomArrayKey(proxies)]; console.log(`Random proxy: ${randomProxy.ip}:${randomProxy.port}`); return `${randomProxy.ip}:${randomProxy.port}`; })
+  .then(proxy => fetchProductionPage(proxy))
+  .then(productions => { console.log('Scraped productions: ' + productions.length); return productions })
+  .then(productions => console.log(productions));
