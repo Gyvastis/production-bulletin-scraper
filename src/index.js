@@ -68,6 +68,7 @@ const parseProductions = ($) => scrapeIt.scrapeHTML($, productionBulletinScrapeC
 
 const fetchProductionPage = (proxy, pageNumber = 1) => request({
   uri: "https://productionbulletin.com/database/",
+  method: 'GET',
   options: {
     proxy,
     transform: body => cheerio.load(body),
@@ -76,13 +77,25 @@ const fetchProductionPage = (proxy, pageNumber = 1) => request({
   .then($ => parseProductions($))
   .then(({productions}) => productions);
 
-const getRandomArbitrary = (min, max) => Math.round(Math.random() * (max - min) + min);
+const productionCreateOrUpdate = body => request({
+  uri: "http://localhost:3001/production/",
+  method: 'POST',
+  body,
+  json: true,
+});
 
-const getRandomArrayKey = (array) => getRandomArbitrary(0, array.length - 1);
+(async () => {
+  const proxies = await scrapeProxies();
+  console.log('Scraped proxies: ' + proxies.length);
 
-scrapeProxies()
-  .then(proxies => { console.log('Scraped proxies: ' + proxies.length); return proxies })
-  .then(proxies => { const randomProxy = proxies[getRandomArrayKey(proxies)]; console.log(`Random proxy: ${randomProxy.ip}:${randomProxy.port}`); return `${randomProxy.ip}:${randomProxy.port}`; })
-  .then(proxy => fetchProductionPage(proxy))
-  .then(productions => { console.log('Scraped productions: ' + productions.length); return productions })
-  .then(productions => console.log(productions));
+  const proxy = `${proxies[0].ip}:${proxies[0].port}`;
+  console.log('Selected proxy ' + proxy);
+
+  const productions = await fetchProductionPage(proxy);
+  console.log('Scraped productions: ' + productions.length);
+
+  console.log('Saving productions...');
+  await Promise.all(productions.map(production => productionCreateOrUpdate(production)));
+
+  console.log('Done!');
+})();
