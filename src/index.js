@@ -96,11 +96,13 @@ const processPage = (proxy, pageNumber) => new Promise(async (resolve, reject) =
   resolve();
 });
 
-(async (requestedNumberOfPages) => {
+(async (scrapeNumberOfPages = 1, startFromPage = 0) => {
   let proxies = await scrapeProxies();
   console.log('Scraped proxies: ' + proxies.length);
 
-  let currentPage = 0;
+  const requestedNumberOfPages = scrapeNumberOfPages + startFromPage;
+  let currentPage = startFromPage;
+
   while(currentPage < requestedNumberOfPages) {
     currentPage++;
     console.log('Scraping page #' + currentPage);
@@ -116,4 +118,4 @@ const processPage = (proxy, pageNumber) => new Promise(async (resolve, reject) =
 
     processPage(proxy, currentPage).catch(error => console.log('Failed to scrape page #' + currentPage));
   }
-})(20);
+})(10);
