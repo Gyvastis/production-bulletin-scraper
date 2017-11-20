@@ -67,7 +67,7 @@ const scrapeProxies = () => scrapeIt("https://free-proxy-list.net/anonymous-prox
 const parseProductions = ($) => scrapeIt.scrapeHTML($, productionBulletinScrapeConfig);
 
 const fetchProductionPage = (proxy, pageNumber = 1) => request({
-  uri: "https://productionbulletin.com/database/",
+  uri: `https://productionbulletin.com/database/?pages=${6 + pageNumber}&projectlist_length=25`,
   method: 'GET',
   options: {
     proxy,
@@ -84,18 +84,36 @@ const productionCreateOrUpdate = body => request({
   json: true,
 });
 
-(async () => {
-  const proxies = await scrapeProxies();
-  console.log('Scraped proxies: ' + proxies.length);
-
-  const proxy = `${proxies[0].ip}:${proxies[0].port}`;
-  console.log('Selected proxy ' + proxy);
-
-  const productions = await fetchProductionPage(proxy);
+const processPage = (proxy, pageNumber) => new Promise(async (resolve, reject) => {
+  const productions = await fetchProductionPage(proxy, pageNumber).catch(error => reject(error));
   console.log('Scraped productions: ' + productions.length);
 
   console.log('Saving productions...');
-  await Promise.all(productions.map(production => productionCreateOrUpdate(production)));
+  await Promise.all(productions.map(production => productionCreateOrUpdate(production))).catch(error => reject(error));
 
-  console.log('Done!');
-})();
+  console.log('Done scraping page #' + pageNumber);
+
+  resolve();
+});
+
+(async (requestedNumberOfPages) => {
+  let proxies = await scrapeProxies();
+  console.log('Scraped proxies: ' + proxies.length);
+
+  let currentPage = 0;
+  while(currentPage < requestedNumberOfPages) {
+    currentPage++;
+    console.log('Scraping page #' + currentPage);
+
+    if(proxies.length == 0) {
+      proxies = await scrapeProxies();
+      console.log('Scraped proxies: ' + proxies.length);
+    };
+
+    const proxy = `${proxies[0].ip}:${proxies[0].port}`;
+    proxies = proxies.slice(1);
+    console.log('Selected proxy ' + proxy);
+
+    processPage(proxy, currentPage).catch(error => console.log('Failed to scrape page #' + currentPage));
+  }
+})(20);
