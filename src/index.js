@@ -1,65 +1,10 @@
 const scrapeIt = require('scrape-it')
 const request = require('request-promise');
 const cheerio = require('cheerio');
+const fs = require('fs');
 
-const freeProxyListScrapeConfig = {
-  proxies: {
-    listItem: "#proxylisttable tbody tr",
-    data: {
-      ip: {
-        selector: "td",
-        eq: 0
-      },
-      port: {
-        selector: "td",
-        eq: 1
-      },
-      isElite: {
-        selector: "td",
-        eq: 4,
-        convert: value => value.toLowerCase().indexOf('elite') >= 0
-      }
-    }
-  }
-};
-
-const productionBulletinScrapeConfig = {
-  productions: {
-    listItem: "#projectlist tbody tr",
-    data: {
-      projectId: {
-        selector: "td",
-        eq: 1,
-        attr: "class",
-        convert: value => value.split(' ')[0]
-      },
-      project: {
-        selector: "td",
-        eq: 1,
-      },
-      startDate: {
-        selector: "td",
-        eq: 2,
-      },
-      location: {
-        selector: "td",
-        eq: 3,
-      },
-      type: {
-        selector: "td",
-        eq: 4,
-      },
-      director: {
-        selector: "td",
-        eq: 5,
-      },
-      productionCompany: {
-        selector: "td",
-        eq: 6,
-      }
-    }
-  },
-};
+const freeProxyListScrapeConfig = require('./config/freeProxyListScrapeConfig');
+const productionBulletinScrapeConfig = require('./config/productionBulletinScrapeConfig');
 
 const scrapeProxies = () => scrapeIt("https://free-proxy-list.net/anonymous-proxy.html", freeProxyListScrapeConfig)
   .then(({proxies}) => proxies.filter(proxy => proxy.isElite));
@@ -77,12 +22,19 @@ const fetchProductionPage = (proxy, pageNumber = 1) => request({
   .then($ => parseProductions($))
   .then(({productions}) => productions);
 
-const productionCreateOrUpdate = body => request({
-  uri: "http://localhost:3001/production/",
-  method: 'POST',
-  body,
-  json: true,
+const productions = [];
+
+const productionCreateOrUpdate = body => fs.appendFile("./output.json", JSON.stringify(body) + ",\r\n", (err) => {
+    if(err) {
+        return console.log(err);
+    }
 });
+// request({
+//   uri: "http://localhost:3001/production/",
+//   method: 'POST',
+//   body,
+//   json: true,
+// });
 
 const processPage = (proxy, pageNumber) => new Promise(async (resolve, reject) => {
   const productions = await fetchProductionPage(proxy, pageNumber).catch(error => reject(error));
@@ -96,12 +48,16 @@ const processPage = (proxy, pageNumber) => new Promise(async (resolve, reject) =
   resolve();
 });
 
+const [ , , scrapeNumberOfPages, startFromPage] = process.argv;
+
 (async (scrapeNumberOfPages = 1, startFromPage = 0) => {
+  console.log(`Scraping ${scrapeNumberOfPages} from ${startFromPage}`);
   let proxies = await scrapeProxies();
   console.log('Scraped proxies: ' + proxies.length);
 
-  const requestedNumberOfPages = scrapeNumberOfPages + startFromPage;
-  let currentPage = startFromPage;
+  const requestedNumberOfPages = parseInt(scrapeNumberOfPages) + parseInt(startFromPage);
+  let currentPage = parseInt(startFromPage);
+  let promises = [];
 
   while(currentPage < requestedNumberOfPages) {
     currentPage++;
@@ -116,6 +72,12 @@ const processPage = (proxy, pageNumber) => new Promise(async (resolve, reject) =
     proxies = proxies.slice(1);
     console.log('Selected proxy ' + proxy);
 
-    processPage(proxy, currentPage).catch(error => console.log('Failed to scrape page #' + currentPage));
+    promises.push(processPage(proxy, currentPage).catch(error => console.log('Failed to scrape page #' + currentPage)));
+
+    if(promises.length == 10) { // wait for every 10 requests to finish
+      await Promise.all(promises);
+
+      promises = [];
+    }
   }
-})(10);
+})(scrapeNumberOfPages, startFromPage);
